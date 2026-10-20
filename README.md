@@ -132,3 +132,6 @@ für alle anderen Belege bleibt die Extraktion aus PDFs.
 
 ---
 Dr. Samuel Kopmann · [softwareandmore.de/ai-integration](https://softwareandmore.de/ai-integration)
+
+© 2026 Dr. Samuel Kopmann. Alle Rechte vorbehalten. Der Code ist zum Ansehen und Nachrechnen der
+Ergebnisse veröffentlicht; für eine Nutzung in eigenen Projekten sprechen Sie mich gern an.
