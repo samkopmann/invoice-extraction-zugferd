@@ -9,8 +9,8 @@ EN 16931 (UN/CEFACT CII). Das Modell sieht nur das PDF, das XML dient als Lösun
 So entsteht eine Genauigkeitsmessung ohne manuelles Labeln.
 
 > Daten: [ZUGFeRD-Korpus](https://github.com/ZUGFeRD/corpus) (Apache 2.0), darin die
-> offiziellen Musterrechnungen des FeRD (frei nutzbar nach FeRD-Lizenz). `make data` klont ihn.
-> Die PDFs liegen nicht in diesem Repository.
+> offiziellen Musterrechnungen des FeRD (frei nutzbar nach FeRD-Lizenz). `make data` klont ihn in dem Stand,
+> mit dem die Ergebnisse entstanden sind (Commit `82e886f`, 13.10.2026). Die PDFs liegen nicht in diesem Repository.
 
 ## Ergebnis
 
@@ -131,4 +131,4 @@ ist dasselbe. Seit 2025 müssen Unternehmen in Deutschland E-Rechnungen empfange
 für alle anderen Belege bleibt die Extraktion aus PDFs.
 
 ---
-Samuel Kopmann · [softwareandmore.de/ai-integration](https://softwareandmore.de/ai-integration)
+Dr. Samuel Kopmann · [softwareandmore.de/ai-integration](https://softwareandmore.de/ai-integration)

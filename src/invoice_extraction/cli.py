@@ -29,6 +29,8 @@ CORPUS = DATA / "corpus"
 GT = DATA / "groundtruth.jsonl"
 RESULTS = Path("results")
 CORPUS_REPO = "https://github.com/ZUGFeRD/corpus.git"
+# Pinned so the 25 invoices and the published results stay reproducible as the corpus grows.
+CORPUS_COMMIT = "82e886fb21369e3e83c1e97170a4ff406deceee7"
 
 
 def _doc_id(path: Path) -> str:
@@ -36,10 +38,11 @@ def _doc_id(path: Path) -> str:
 
 
 def cmd_corpus(_args) -> None:
-    if CORPUS.exists():
-        subprocess.run(["git", "-C", str(CORPUS), "pull", "--ff-only"], check=True)
-    else:
-        subprocess.run(["git", "clone", "--depth", "1", CORPUS_REPO, str(CORPUS)], check=True)
+    if not CORPUS.exists():
+        subprocess.run(["git", "clone", "--no-checkout", CORPUS_REPO, str(CORPUS)], check=True)
+    git = ["git", "-C", str(CORPUS)]
+    subprocess.run([*git, "fetch", "--quiet", "origin", CORPUS_COMMIT], check=True)
+    subprocess.run([*git, "checkout", "--quiet", "--detach", CORPUS_COMMIT], check=True)
 
 
 def cmd_groundtruth(_args) -> None:
