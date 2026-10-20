@@ -62,8 +62,35 @@ NORMALIZE = {
 }
 
 
-def field_matches(field: str, truth, pred) -> bool:
+CREDIT_NOTE = "381"
+NAMES = ("seller_name", "buyer_name")
+# Optional on an invoice: when the XML has no value we cannot tell whether the PDF shows one,
+# so the field is not scored for that document.
+OPTIONAL = ("seller_vat_id", "iban")
+
+_LEGAL_FORM = re.compile(
+    r"\s*,?\s*(gmbh\s*&\s*co\.?\s*kg|gmbh|ag|kg|ohg|e\.\s?k\.|ug|se|sarl|sas|sa|ltd\.?|inc\.?|llc)\.?$",
+    re.IGNORECASE,
+)
+
+
+def _name_variants(value: str | None) -> set[str | None]:
+    """XML name fields sometimes carry salutation or GLN lines ("Herrn\\nMax Mustermann");
+    the last line is the name. Legal forms ("SARL", "GmbH") are ignored."""
+    if not value:
+        return {None}
+    lines = [line for line in value.splitlines() if line.strip()]
+    return {text(_LEGAL_FORM.sub("", v.strip())) for v in {value, lines[-1]}}
+
+
+def field_matches(field: str, truth, pred, credit_note: bool = False) -> bool:
+    if field in NAMES:
+        return bool(_name_variants(truth) & _name_variants(pred))
     norm = NORMALIZE[field]
+    if credit_note and field in AMOUNTS:
+        # Credit notes: the XML states amounts as positive, the PDF often prints them negative.
+        t, p = norm(truth), norm(pred)
+        return t is not None and p is not None and abs(t) == abs(p)
     return norm(truth) == norm(pred)
 
 

@@ -35,7 +35,8 @@ def embedded_xml(pdf: bytes) -> bytes:
     reader = PdfReader(io.BytesIO(pdf))
     for name, contents in reader.attachments.items():
         for content in contents:
-            if name.lower().endswith(".xml") and b"CrossIndustry" in content[:4000]:
+            # Not just the head: official FeRD samples open with a long licence comment.
+            if name.lower().endswith(".xml") and b"CrossIndustry" in content:
                 return content
     raise UnsupportedInvoice("keine CII-XML-Anlage gefunden")
 
@@ -101,5 +102,30 @@ def parse_cii(xml: bytes) -> Invoice:
     )
 
 
+def type_code(xml: bytes) -> str | None:
+    """UNTDID 1001 document type: 380 invoice, 381 credit note, 384 corrected invoice, ..."""
+    return _text(ET.fromstring(xml), "rsm:ExchangedDocument/ram:TypeCode")
+
+
+def profile(xml: bytes) -> str:
+    """Factur-X/ZUGFeRD profile from the guideline ID, e.g. 'en16931', 'basic', 'minimum'."""
+    root = ET.fromstring(xml)
+    guideline = _text(root, "rsm:ExchangedDocumentContext/"
+                            "ram:GuidelineSpecifiedDocumentContextParameter/ram:ID") or ""
+    g = guideline.lower()
+    for name in ("minimum", "basicwl", "basic", "extended", "xrechnung"):
+        if name in g:
+            return name
+    return "en16931" if "en16931" in g else (g or "unbekannt")
+
+
+# Profiles whose XML deliberately carries only a few fields while the PDF shows the full
+# invoice: a correctly read IBAN or VAT ID would be scored as wrong.
+INCOMPLETE_PROFILES = {"minimum", "basicwl"}
+
+
 def pdf_text(pdf: bytes) -> str:
-    return "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
+    text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
+    # Some text layers yield emoji as separate UTF-16 surrogate halves, which cannot be sent
+    # as UTF-8: rejoin pairs, replace lone halves.
+    return text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")

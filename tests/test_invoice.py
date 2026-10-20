@@ -8,11 +8,12 @@ from pypdf import PdfReader, PdfWriter
 
 from invoice_extraction import checks
 from invoice_extraction.evaluate import evaluate
-from invoice_extraction.extract import Extractor
+from invoice_extraction.extract import Extractor, scanned_pages
 from invoice_extraction.ground_truth import (
     UnsupportedInvoice,
     embedded_xml,
     parse_cii,
+    profile,
     strip_attachments,
 )
 from invoice_extraction.schema import Invoice
@@ -156,3 +157,65 @@ def test_extractor_refusal():
     client = SimpleNamespace(beta=SimpleNamespace(messages=fake))
     r = Extractor(client=client)(_pdf_with_attachment(CII))
     assert r.invoice is None and r.error == "refusal"
+
+
+def test_xml_found_behind_long_licence_comment():
+    # Official FeRD samples start with a licence comment of several KB.
+    xml = CII.replace(b"<rsm:CrossIndustryInvoice", b"<!--" + b"x" * 6000 + b"-->\n<rsm:CrossIndustryInvoice", 1)
+    assert embedded_xml(_pdf_with_attachment(xml)) == xml
+
+
+def test_profile():
+    ctx = (b"<rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter>"
+           b"<ram:ID>urn:factur-x.eu:1p0:minimum</ram:ID>"
+           b"</ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>")
+    minimum = CII.replace(b"<rsm:ExchangedDocument>", ctx + b"<rsm:ExchangedDocument>", 1)
+    assert profile(minimum) == "minimum"
+    assert profile(CII) == "unbekannt"
+
+
+def test_no_fallback_parameter_for_haiku():
+    fake = _FakeMessages(parse_cii(CII))
+    client = SimpleNamespace(beta=SimpleNamespace(messages=fake))
+    r = Extractor(model="claude-haiku-5-5", client=client)(_pdf_with_attachment(CII))
+    assert "fallbacks" not in fake.kwargs and "betas" not in fake.kwargs
+    assert r.cost_usd == pytest.approx((2000 * 0.10 + 200 * 0.50) / 1e6)
+
+
+def test_scan_mode_sends_only_degraded_images():
+    pages = scanned_pages(_pdf_with_attachment(CII))
+    assert len(pages) == 1 and pages[0][:2] == b"\xff\xd8"  # one JPEG per page
+    fake = _FakeMessages(parse_cii(CII))
+    client = SimpleNamespace(beta=SimpleNamespace(messages=fake))
+    Extractor(mode="scan", client=client)(_pdf_with_attachment(CII))
+    content = fake.kwargs["messages"][0]["content"]
+    assert [b["type"] for b in content] == ["image", "text"]
+    assert content[0]["source"]["media_type"] == "image/jpeg"
+
+
+def test_pdf_text_has_no_lone_surrogates(monkeypatch):
+    import invoice_extraction.ground_truth as gt
+
+    pages = [SimpleNamespace(extract_text=lambda: "Danke 😀 und \ud83d Ende")]
+    monkeypatch.setattr(gt, "PdfReader", lambda _: SimpleNamespace(pages=pages))
+    text = gt.pdf_text(b"")
+    assert "😀" in text
+    text.encode("utf-8")  # would raise on a lone surrogate
+
+
+def test_name_rules():
+    assert checks.field_matches("buyer_name", "Herrn\nMax Mustermann", "Max Mustermann")
+    assert checks.field_matches("seller_name", "GLN 4333741000005\nLief-Nr: 549910\nMUSTERLIEFERANT GMBH",
+                                "Musterlieferant GmbH")
+    assert checks.field_matches("seller_name", "Au bon moulin", "Au bon moulin SARL")
+    assert not checks.field_matches("seller_name", "Lieferant GmbH", "Kunden AG")
+
+
+def test_credit_note_sign_and_optional_fields():
+    assert checks.field_matches("gross_total", "233.47", "-233.47", credit_note=True)
+    assert not checks.field_matches("gross_total", "233.47", "-233.47")
+    assert not checks.field_matches("gross_total", "233.47", "-233.48", credit_note=True)
+    gt = parse_cii(CII).model_copy(update={"iban": None})
+    pred = gt.model_copy(update={"iban": "DE75123456780000001234"})
+    r = evaluate({"a": gt}, {"a": {"invoice": pred, "cost_usd": 0.0, "seconds": 0.0}})
+    assert r["doc_all_correct"] == 1.0 and "iban" not in r["field_accuracy"]

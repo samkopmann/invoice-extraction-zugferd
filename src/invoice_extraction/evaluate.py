@@ -5,11 +5,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .checks import field_matches, plausibility
+from .checks import OPTIONAL, field_matches, plausibility
 from .schema import FIELDS, Invoice
 
 
-def evaluate(truth: dict[str, Invoice], preds: dict[str, dict]) -> dict:
+def evaluate(truth: dict[str, Invoice], preds: dict[str, dict],
+             credit_notes: set[str] = frozenset()) -> dict:
     """`preds[id]` = {"invoice": Invoice | None, "cost_usd", "seconds", ...}."""
     per_field = {f: [] for f in FIELDS}
     docs = []
@@ -18,8 +19,10 @@ def evaluate(truth: dict[str, Invoice], preds: dict[str, dict]) -> dict:
         if p is None:
             continue
         inv = p["invoice"]
-        correct = {f: inv is not None and field_matches(f, getattr(gt, f), getattr(inv, f))
-                   for f in FIELDS}
+        scored = [f for f in FIELDS if not (f in OPTIONAL and getattr(gt, f) is None)]
+        correct = {f: inv is not None and field_matches(f, getattr(gt, f), getattr(inv, f),
+                                                        credit_note=doc_id in credit_notes)
+                   for f in scored}
         for f, ok in correct.items():
             per_field[f].append(ok)
         checks = plausibility(inv) if inv is not None else {"extrahiert": False}
